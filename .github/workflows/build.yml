@@ -21,12 +21,18 @@ jobs:
           curl -L -o project.zip "${{ inputs.zip_url }}"
           mkdir -p webapp
           unzip -q project.zip -d webapp/
+          ls -la webapp/
 
       - name: Setup Java
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
 
       - name: Setup Android SDK
         run: |
@@ -42,13 +48,24 @@ jobs:
         env:
           ANDROID_HOME: /opt/android-sdk
 
-      - name: Create APK
+      - name: Build APK with Bubblewrap
         run: |
-          echo "APK File for ${{ inputs.app_name }}" > app.apk
-          echo "Size: 15 MB" >> app.apk
+          npm install -g @bubblewrap/cli
+          
+          if [ ! -f webapp/manifest.json ]; then
+            echo '{"name":"${{ inputs.app_name }}","short_name":"${{ inputs.app_name }}","start_url":"index.html","display":"standalone"}' > webapp/manifest.json
+          fi
+          
+          mkdir -p app && cd app
+          npx @bubblewrap/cli init --manifest=../webapp/manifest.json --directory=./android --name="${{ inputs.app_name }}" --packageName="com.${{ inputs.app_name }}"
+          mkdir -p android/app/src/main/assets/public
+          cp -r ../webapp/* android/app/src/main/assets/public/
+          cd android && chmod +x gradlew && ./gradlew assembleDebug
+        env:
+          ANDROID_HOME: /opt/android-sdk
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.app_name }}
-          path: app.apk
+          path: app/android/app/build/outputs/apk/debug/*.apk
